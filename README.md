@@ -1,21 +1,4 @@
 ---
-description: "OpenCode's free-tier models inside DeepSeek Harness, served by a local OpenCode process."
-kind: "group"
----
-
-# dsh-deep-opencode
-
-English | [中文](README.zh.md)
-
-Use OpenCode's **free-tier models** inside DeepSeek Harness. The harness
-already reads the `opencode` and `opencode-go` providers from the shared
-models.dev catalogue, and those work — but only with an OpenCode API key. Their
-free models fail, because the gateway refuses them for any client that is not
-OpenCode:
-
-```text
-OpenCode's free tier can only be used from within OpenCode
-```
 
 This plugin adds a separate provider route, `opencode-free`, that reaches those
 same free models. It starts a real `opencode serve` process and asks *that*
@@ -23,44 +6,55 @@ process to run each turn, so the request genuinely originates from OpenCode and
 the free models resolve. No API key is involved. This is the same arrangement
 [OpenChamber](https://github.com/openchamber/openchamber) uses.
 
+---
+
+## What's Fixed in This Fork (`dsh 0.2.x` Compatibility)
+
+The upstream repository (`temidayoxyz/deep-opencode`) is archived and targets an older `dsh 0.1.x` adapter contract. This fork patches the runtime and prebuilt bundle (`lib/index.js`) for **`dsh 0.2.x`** and **`opencode v2.2.x`**:
+
+- **`prepareCall(provider, model, signal)` Adapter Contract:** Implements the one-shot registration-bound call preparation required by `dsh 0.2.x` turn dispatchers, resolving `registration.adapter.prepareCall is not a function`.
+- **Strict `resolveModel` Schema Normalization:** Ensures exact model metadata (`provider`, `id`, non-empty `name`, `inputModalities`, and positive integer `context.contextWindow`) conforms to `dsh 0.2.x` `normalizeModelInfo` checks, preventing `INVALID_MODEL_INFO` and `INVALID_MODEL_CONTEXT` errors.
+- **Null-Safe Message Provenance Digest:** Guards `message.source?.provider` inside `src/session-registry.ts` when evaluating assistant message history across turns, preventing `Cannot read properties of undefined (reading 'provider')`.
+
+---
+
 ## Install
 
 Requires the OpenCode v2 CLI on your `PATH` (`opencode --version`).
 
-From the npm registry, once published:
+### From GitHub (Recommended — Prebuilt for `dsh 0.2.x`)
 
 ```sh
-dsh plugin add dsh-deep-opencode
+dsh plugin add [https://github.com/dummy-28/deep-opencode](https://github.com/dummy-28/deep-opencode) --profile web
 ```
 
-From GitHub:
+The built entry point (`lib/index.js`) is committed directly to the repository, so a GitHub install requires no build step.
+
+### Local Clone & Link (`macOS` / `Linux` / `Windows`)
+
+To clone and link locally into a profile (e.g., `web` or `default`):
 
 ```sh
-dsh plugin add https://github.com/temidayoxyz/deep-opencode
+git clone [https://github.com/dummy-28/deep-opencode.git](https://github.com/dummy-28/deep-opencode.git) ~/deep-opencode
+cd ~/deep-opencode
+npm install
+dsh plugin add . --link --profile web
 ```
 
-The built entry point is committed, so a GitHub install needs no build step —
-pnpm refuses to run a git dependency's install scripts, and the package has no
-`prepare` script to run.
-
-If an older Windows installation fails to update with `ERR_PNPM_EPERM`, disable
-this plugin and fully restart Harness, then update while the plugin is disabled.
-Re-enable it and restart after the update. Older versions let OpenCode watch
-the installed package directory; the updated version watches a temporary copy.
-
-To work on it locally instead, clone and install from the path:
-
-```sh
-git clone https://github.com/temidayoxyz/deep-opencode.git
-cd deep-opencode && npm install && npm run build
-dsh plugin add D:/path/to/deep-opencode
-```
+*(Optional: If you edit TypeScript source files under `src/`, run `npm run build` to regenerate `lib/index.js`.)*
 
 Or add it to a profile's `cordis.patch.yml`:
 
 ```yaml
 - name: dsh-deep-opencode
 ```
+
+If an older Windows installation fails to update with `ERR_PNPM_EPERM`, disable
+this plugin and fully restart Harness, then update while the plugin is disabled.
+Re-enable it and restart after the update. Older versions let OpenCode watch
+the installed package directory; the updated version watches a temporary copy.
+
+---
 
 ## Use
 
@@ -69,9 +63,12 @@ whatever your installed OpenCode version currently serves for free — read from
 the running server, not pinned in this plugin, so a newly added free model shows
 up on its own and a retired one disappears on its own.
 
-As of OpenCode v2.0.18 that is: Big Pickle, Ling 3.0 Flash Fin Free,
-LongCat 2.5 Preview Free, MiMo-V2.6-Flash Free, Muse Spark 1.3 Free,
-Nemotron 3.5 Lightning Free, Nemotron 3 Ultra Free, and Space Bunny Free.
+Examples of discovered free models include `deepseek-v4.1-flash-free`, Big Pickle,
+Ling 3.0 Flash Fin Free, LongCat 2.5 Preview Free, MiMo-V2.6-Flash Free,
+Muse Spark 1.3 Free, Nemotron 3.5 Lightning Free, Nemotron 3 Ultra Free, and
+Space Bunny Free.
+
+---
 
 ## Configuration
 
@@ -100,9 +97,11 @@ Every deployment-varying value is a `cordis.yml` field:
 ```yaml
 - name: dsh-deep-opencode
   config:
-    opencodeCommand: opencode
+    opencodeCommand: /Users/your-user/.opencode/bin/opencode
     turnTimeoutMs: 1200000
 ```
+
+---
 
 ## Model Experience
 
@@ -133,7 +132,7 @@ can stay `false`. Disabling `bridgeHarnessTools` keeps context forwarding active
 
 #### Agent execution and plugin integration
 
-One Harness request now follows the **whole OpenCode agent execution**. A
+One Harness request follows the **whole OpenCode agent execution**. A
 `session.step.ended` event records a model step; a step ending in `tool-calls`
 continues inside OpenCode. The adapter emits one final usage total and one
 finish when `session.execution.succeeded` arrives. Text and reasoning from
@@ -203,6 +202,8 @@ and the resulting model context: refreshed Harness context can change the
 prefix even when the native session is reused. Rewriting past conversation
 creates a new native session and restores history through the companion.
 
+---
+
 ## Known Limitations and Deferred Work
 
 - **Continuity is held by the provider, not the log.** A turn sends only what is
@@ -251,6 +252,8 @@ creates a new native session and restores history through the companion.
 - **Reloading interrupts in-flight turns.** The plugin interrupts delegated
   runs, deletes its mapped sessions, then stops its managed servers.
 
+---
+
 ## Verification
 
 ```sh
@@ -286,11 +289,9 @@ and edits it in the same provider session.
 `verify:bridge` loads the bundled companion in a real OpenCode server, then
 asks a free model to invoke a DSH fixture tool that writes a temporary marker.
 It verifies live agent identity, exactly one dispatch, canonical tool history,
-completion, and token usage. It was verified with OpenCode v2.0.22.
-Live checks depend on free-model availability: one run completed successfully;
-a repeat executed the DSH tool successfully but reached its turn deadline
-before the final response. Cleanup warnings preserve the original test error.
+completion, and token usage.
 
 ## License
 
 MIT
+EOF
