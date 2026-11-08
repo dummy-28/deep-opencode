@@ -84,7 +84,7 @@ export function digest(options: GenerateOptions): DigestMessage[] {
   for (const message of options.messages) {
     if (!isConversible(message)) continue
     messages.push({ id: message.id, role: message.role, text: readText(message.content),
-      delegated: message.role === 'assistant' ? message.source?.kind === 'model' ? message.source.provider === 'opencode-free' : true : undefined })
+      delegated: message.role === 'assistant' ? (message.source?.kind === 'model' ? message.source?.provider === 'opencode-free' : true) : undefined }) })
   }
   return messages
 }

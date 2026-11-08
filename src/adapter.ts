@@ -263,30 +263,33 @@ export class OpenCodeFreeAdapter extends LlmAdapter {
    * catalogue does not list still resolves and a request can still route; the
    * GUI is the surface that requires membership.
    */
-  override async resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
-    const models = await this.listModels()
-    const found = models.find((entry) => entry.id === model)
-    const resolved: LlmResolvedModelInfo = { provider, id: model, name: found?.name ?? model }
-    const context = (found as FreeModel | undefined)?.context
-    if (context !== undefined) resolved.context = context
-    if (found?.inputModalities !== undefined) resolved.inputModalities = found.inputModalities
+  override async resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo> {
+    let found: LlmModelInfo | undefined
+    try {
+      const models = await this.listModels()
+      found = models.find((entry) => entry.id === model)
+    } catch {}
+    const resolved: LlmResolvedModelInfo = {
+      provider,
+      id: model,
+      name: found?.name && found.name.length > 0 ? found.name : model,
+      inputModalities: found?.inputModalities ?? ['text'],
+    }
+    const contextWindow = (found as FreeModel | undefined)?.context?.contextWindow
+    if (contextWindow !== undefined && Number.isInteger(contextWindow) && contextWindow > 0) {
+      resolved.context = { contextWindow }
+    }
     return resolved
   }
 
-  /**
-   * Runs one delegated turn.
-   *
-   * A harness session is mapped onto one OpenCode session so the provider keeps
-   * the conversation, and only what is new is sent. When no mapping exists, or
-   * the cursor found the history had been rewritten, the whole conversation is
-   * replayed into a fresh provider session instead, so a divergence costs
-   * continuity rather than a failed turn. Turns are serialised per harness
-   * session so two cannot read the same cursor.
-   *
-   * The request runs against the server owning the session's project directory,
-   * and session creation specifies its native location explicitly.
-   */
-  override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+  async prepareCall(provider: string, model: string, signal?: AbortSignal) {
+    const modelInfo = await this.resolveModel(provider, model, signal)
+    return {
+      model: modelInfo,
+      stream: (options: GenerateOptions) => this.stream(options),
+    }
+  }  
+override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     if (this.#disposed) throw new LlmError('OpenCode adapter has been unloaded', 'ABORTED')
     const scope = turnScope(options.signal, this.#turnTimeoutMs)
     const queue = new AsyncQueue<StreamChunk>()
